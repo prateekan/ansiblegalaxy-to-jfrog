@@ -1,0 +1,60 @@
+```
+pipeline {
+    agent any
+    environment {
+        ANSIBLE_COLLECTION_SOURCE = "https://your-private-collection-source.com"
+        ANSIBLE_COLLECTION_AUTH_TOKEN = credentials('private-collection-auth-token')
+    }
+    stages {
+        stage('Pull Ansible Collections') {
+            steps {
+                script {
+                    def collectionName = "${params.collection_name}"
+                    def collectionVersion = "${params.collection_version}"
+                    def localCollectionPath = "${WORKSPACE}/collections"
+
+                    // Create the local collections directory
+                    sh "mkdir -p ${localCollectionPath}"
+
+                    // Download the Ansible collection
+                    withEnv(["ANSIBLE_COLLECTION_SOURCE=${ANSIBLE_COLLECTION_SOURCE}", "ANSIBLE_COLLECTION_AUTH_TOKEN=${ANSIBLE_COLLECTION_AUTH_TOKEN}"]) {
+                        sh "ansible-galaxy collection install ${collectionName} --version ${collectionVersion} -p ${localCollectionPath}"
+                    }
+                }
+            }
+        }
+        stage('Upload to Artifactory') {
+            steps {
+                script {
+                    def artifactoryUrl = "https://your-artifactory-url/artifactory"
+                    def artifactoryRepo = "my-repo"
+                    def artifactoryPath = "collections"
+                    def artifactoryUser = "your-artifactory-username"
+                    def artifactoryPassword = "your-artifactory-password"
+
+                    // Construct the Artifactory API upload URL
+                    def uploadUrl = "${artifactoryUrl}/${artifactoryRepo}/${artifactoryPath}/${collectionName}-${collectionVersion}.zip"
+
+                    // Upload the Ansible collection to Artifactory using the API
+                    sh """
+                        curl -u ${artifactoryUser}:${artifactoryPassword} -X PUT -T ${localCollectionPath}/${collectionName}-${collectionVersion}.zip ${uploadUrl}
+                    """
+                }
+            }
+        }
+        stage('Cleanup') {
+            steps {
+                script {
+                    def localCollectionPath = "${WORKSPACE}/collections"
+
+                    // Delete the local collections directory
+                    sh "rm -rf ${localCollectionPath}"
+                }
+            }
+        }
+    }
+    parameters {
+        string(name: 'collection_name', description: 'Enter the Ansible collection name to install')
+        string(name: 'collection_version', description: 'Enter the Ansible collection version to install')
+    }
+}
